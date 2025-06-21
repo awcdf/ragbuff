@@ -1,8 +1,8 @@
 import tkinter as tk
-from tkinter import ttk, Canvas
+from tkinter import ttk, Canvas, scrolledtext
 from PIL import ImageTk
-import ctypes
 import time
+import pyautogui  # Novo: substitui ctypes
 
 from MemoryReader import MemoryReader
 from PlayerStatus import PlayerStatus
@@ -11,33 +11,18 @@ from MouseTracker import MouseTracker
 from MapViewer import MapViewer
 from KeyBinder import KeyBinder
 
+# NOVO método de pressionar teclas usando pyautogui
 def send_input_key(key_name):
-    vk_codes = {
-        'F1': 0x70, 'F2': 0x71, 'F3': 0x72, 'F4': 0x73,
-        'F5': 0x74, 'F6': 0x75, 'F7': 0x76, 'F8': 0x77,
-        'F9': 0x78, 'F10': 0x79, 'F11': 0x7A, 'F12': 0x7B,
-        '1': 0x31, '2': 0x32, '3': 0x33, '4': 0x34, '5': 0x35,
-        '6': 0x36, '7': 0x37, '8': 0x38, '9': 0x39, '0': 0x30,
-        'A': 0x41, 'B': 0x42, 'C': 0x43, 'D': 0x44, 'E': 0x45,
-        # Adicione mais teclas conforme necessidade
-    }
-
-    key = key_name.upper()
-    if key not in vk_codes:
-        print(f"[ERRO] Tecla '{key}' não suportada.")
-        return
-
-    vk = vk_codes[key]
-    ctypes.windll.user32.keybd_event(vk, 0, 0, 0)
-    time.sleep(0.05)
-    ctypes.windll.user32.keybd_event(vk, 0, 2, 0)
-
+    try:
+        pyautogui.press(key_name.lower())
+    except Exception as e:
+        print(f"[ERRO] Falha ao pressionar tecla {key_name}: {e}")
 
 class MainApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Monitor Ragnarok")
-        self.root.geometry("1000x800")
+        self.root.geometry("950x700")
         self.root.resizable(False, False)
         self.root.configure(bg="#1e1e2f")
 
@@ -46,7 +31,7 @@ class MainApp:
         self.buffs = BuffManager(self.mem)
         self.mouse = MouseTracker()
         self.scale = 1
-        self.rodando = True
+        self.rodando = False
 
         self.current_map_name = self.status.get_map_name() or "unknown_map"
         self.map_viewer = MapViewer(self.current_map_name)
@@ -98,18 +83,31 @@ class MainApp:
         self.keybinder = KeyBinder(self.main_frame)
         self.keybinder.pack(fill="x", padx=5, pady=10)
 
-        self.btn_toggle = ttk.Button(self.main_frame, text="Stop (Estado: Rodando)", command=self.toggle_execucao)
-        self.btn_toggle.pack(fill="x", padx=5, pady=(0, 10))
+        buttons_frame = ttk.Frame(self.main_frame)
+        buttons_frame.pack(fill="x", padx=5, pady=(0, 5))
 
-        self.btn_save = ttk.Button(self.main_frame, text="Salvar configurações", command=self.salvar_configuracoes)
-        self.btn_save.pack(fill="x", padx=5, pady=(0, 10))
+        self.btn_toggle = ttk.Button(buttons_frame, text="Start (Estado: Parado)", command=self.toggle_execucao)
+        self.btn_toggle.pack(side=tk.LEFT, padx=(0, 5))
 
-        # Mapa ao lado direito
+        self.btn_ia_toggle = ttk.Button(buttons_frame, text="Ativar/Desativar IA", command=self.toggle_ia)
+        self.btn_ia_toggle.pack(side=tk.LEFT, padx=5)
+
+        self.log_text = scrolledtext.ScrolledText(self.main_frame, width=75, height=10,
+                                                  bg="#1e1e2f", fg="lime",
+                                                  font=("Consolas", 10), relief="sunken", bd=2)
+        self.log_text.pack(padx=0, pady=(0, 10), fill="x")
+        self.log("[INFO] Aplicação iniciada.")
+
         map_container = ttk.Frame(container)
         map_container.pack(side=tk.RIGHT, fill="both", expand=True)
 
         self.canvas = Canvas(map_container, width=300, height=300, bg="#2a2a3f", highlightbackground="#999")
         self.canvas.pack(padx=5, pady=5)
+
+    def log(self, message):
+        timestamp = time.strftime("%H:%M:%S")
+        self.log_text.insert(tk.END, f"[{timestamp}] {message}\n")
+        self.log_text.see(tk.END)
 
     def load_map_image(self):
         map_img = self.map_viewer.get_image()
@@ -137,7 +135,7 @@ class MainApp:
             buffs = self.buffs.get_buffs()
             self.buffs_text.set("\n".join(buffs) if buffs else "Nenhum buff ativo.")
         except Exception as e:
-            print(f"[ERRO] update_loop: {e}")
+            self.log(f"[ERRO] update_loop: {e}")
 
         self.root.after(1000, self.update_loop)
 
@@ -155,7 +153,7 @@ class MainApp:
             new_map = self.status.get_map_name()
 
             if new_map and new_map != self.current_map_name:
-                print(f"[INFO] Mudança de mapa detectada: {self.current_map_name} -> {new_map}")
+                self.log(f"[INFO] Mudança de mapa detectada: {self.current_map_name} -> {new_map}")
                 self.current_map_name = new_map
                 self.map_viewer = MapViewer(new_map)
                 self.load_map_image()
@@ -165,7 +163,7 @@ class MainApp:
                 y = pos['y'] * self.scale
                 self.canvas.coords(self.marker, x - 3, y - 3, x + 3, y + 3)
         except Exception as e:
-            print(f"[ERRO] update_map: {e}")
+            self.log(f"[ERRO] update_map: {e}")
         self.root.after(200, self.update_map)
 
     def verificar_e_ativar_buffs(self):
@@ -181,10 +179,10 @@ class MainApp:
                 if not tecla or not buff_nome:
                     continue
                 if buff_nome not in buffs_ativos:
-                    print(f"[INFO] Buff {buff_nome} não está ativo. Ativando com tecla {tecla}")
+                    self.log(f"[INFO] Buff {buff_nome} não está ativo. Ativando com tecla {tecla}")
                     send_input_key(tecla)
         except Exception as e:
-            print(f"[ERRO] verificação de buff: {e}")
+            self.log(f"[ERRO] verificação de buff: {e}")
 
         self.root.after(2000, self.verificar_e_ativar_buffs)
 
@@ -193,8 +191,8 @@ class MainApp:
         estado = "Rodando" if self.rodando else "Parado"
         self.btn_toggle.config(text=f"{'Stop' if self.rodando else 'Start'} (Estado: {estado})")
 
-    def salvar_configuracoes(self):
-        self.keybinder.save_bindings_to_file()
+    def toggle_ia(self):
+        self.log("[INFO] Botão Ativar/Desativar IA clicado - função futura")
 
 
 if __name__ == "__main__":
