@@ -12,25 +12,20 @@ class MapViewer:
         self.width = 0
         self.height = 0
         self.data = None
-
         self.load_map_from_gz()
 
     def load_map_from_gz(self):
         gz_path = os.path.join(self.maps_folder, f"{self.map_name}.fld2.gz")
         fld2_filename = f"{self.map_name}.fld2"
-
         if not os.path.exists(gz_path):
             print(f"[ERRO] Arquivo {gz_path} não encontrado.")
             return
-
         try:
             with gzip.open(gz_path, 'rb') as gz_file:
                 gz_content = gz_file.read()
-
                 # Procurar por arquivo interno com mesmo nome
                 start = gz_content.find(b'\x00' * 4)  # Tentativa de localização — alternativa abaixo
                 fld2_data = gz_content
-
                 # Abre o conteúdo do fld2 como se fosse arquivo em memória
                 with io.BytesIO(fld2_data) as f:
                     self.width, self.height = struct.unpack('<HH', f.read(4))
@@ -43,5 +38,12 @@ class MapViewer:
     def get_image(self):
         if self.data is None:
             return Image.new("L", (100, 100), color=128)  # mapa neutro
-        image = Image.fromarray(255 - self.data * 255).transpose(Image.FLIP_TOP_BOTTOM)
+        image = Image.fromarray(255 - self.data * 255)
+        image = image.rotate(360, expand=True)  # Rotaciona a imagem em 180 graus
         return image
+
+    def adjust_coordinates(self, x, y):
+        """Ajusta as coordenadas após a rotação de 180 graus."""
+        new_x = x
+        new_y = self.width  - y
+        return new_x, new_y

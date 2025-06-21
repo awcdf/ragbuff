@@ -151,17 +151,17 @@ class MainApp:
         try:
             pos = self.status.get_status()
             new_map = self.status.get_map_name()
-
             if new_map and new_map != self.current_map_name:
                 self.log(f"[INFO] Mudança de mapa detectada: {self.current_map_name} -> {new_map}")
                 self.current_map_name = new_map
                 self.map_viewer = MapViewer(new_map)
                 self.load_map_image()
-
             if pos:
                 x = pos['x'] * self.scale
                 y = pos['y'] * self.scale
-                self.canvas.coords(self.marker, x - 3, y - 3, x + 3, y + 3)
+                # Ajustar as coordenadas após a rotação de 180 graus
+                x_adjusted, y_adjusted = self.map_viewer.adjust_coordinates(x, y)
+                self.canvas.coords(self.marker, x_adjusted - 3, y_adjusted - 3, x_adjusted + 3, y_adjusted + 3)
         except Exception as e:
             self.log(f"[ERRO] update_map: {e}")
         self.root.after(200, self.update_map)
