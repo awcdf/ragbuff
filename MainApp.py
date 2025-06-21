@@ -11,7 +11,6 @@ from MouseTracker import MouseTracker
 from MapViewer import MapViewer
 from KeyBinder import KeyBinder
 
-
 def send_input_key(key_name):
     vk_codes = {
         'F1': 0x70, 'F2': 0x71, 'F3': 0x72, 'F4': 0x73,
@@ -38,6 +37,8 @@ class MainApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Monitor Ragnarok")
+        self.root.geometry("1000x800")
+        self.root.resizable(False, False)
         self.root.configure(bg="#1e1e2f")
 
         self.mem = MemoryReader()
@@ -63,7 +64,10 @@ class MainApp:
         style.configure("TFrame", background="#1e1e2f")
         style.configure("TLabelFrame", background="#1e1e2f", foreground="white", font=("Segoe UI", 11, "bold"))
 
-        self.main_frame = ttk.Frame(self.root, padding="10")
+        container = ttk.Frame(self.root, padding="10")
+        container.pack(fill="both", expand=True)
+
+        self.main_frame = ttk.Frame(container)
         self.main_frame.pack(side=tk.LEFT, fill="y")
 
         stats_frame = ttk.LabelFrame(self.main_frame, text="Status")
@@ -100,11 +104,12 @@ class MainApp:
         self.btn_save = ttk.Button(self.main_frame, text="Salvar configurações", command=self.salvar_configuracoes)
         self.btn_save.pack(fill="x", padx=5, pady=(0, 10))
 
-        map_frame = ttk.Frame(self.main_frame)
-        map_frame.pack(padx=5, pady=(0, 10))
+        # Mapa ao lado direito
+        map_container = ttk.Frame(container)
+        map_container.pack(side=tk.RIGHT, fill="both", expand=True)
 
-        self.canvas = Canvas(map_frame, width=300, height=300, bg="#2a2a3f", highlightbackground="#999")
-        self.canvas.pack()
+        self.canvas = Canvas(map_container, width=300, height=300, bg="#2a2a3f", highlightbackground="#999")
+        self.canvas.pack(padx=5, pady=5)
 
     def load_map_image(self):
         map_img = self.map_viewer.get_image()

@@ -26,13 +26,19 @@ class KeyBinder(ttk.Frame):
             return []
 
     def build_ui(self):
-        left_frame = ttk.Frame(self)
+        # Cria o frame principal dividido em esquerda e direita
+        main_frame = ttk.Frame(self)
+        main_frame.pack(fill="both", expand=True)
+
+        left_frame = ttk.Frame(main_frame)
         left_frame.pack(side="left", fill="y", padx=10)
 
-        right_frame = ttk.Frame(self)
-        right_frame.pack(side="right", fill="both", expand=True, padx=10)
-        self.map_frame = right_frame  # este frame poderá ser usado para embedar o mapa ao lado direito
+        right_frame = ttk.Frame(main_frame)
+        right_frame.pack(side="left", fill="both", expand=True, padx=10)
 
+        self.map_frame = right_frame  # <- necessário para MapViewerGZ usar
+
+        # Seções de entrada de teclas e combos
         for i in range(self.bind_count):
             frame = ttk.Frame(left_frame)
             frame.pack(fill="x", pady=2)
