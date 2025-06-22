@@ -2,7 +2,6 @@ import tkinter as tk
 from tkinter import ttk, Canvas, scrolledtext
 from PIL import ImageTk
 import time
-import pyautogui  # Novo: substitui ctypes
 
 from MemoryReader import MemoryReader
 from PlayerStatus import PlayerStatus
@@ -10,19 +9,13 @@ from BuffManager import BuffManager
 from MouseTracker import MouseTracker
 from MapViewer import MapViewer
 from KeyBinder import KeyBinder
-
-# NOVO método de pressionar teclas usando pyautogui
-def send_input_key(key_name):
-    try:
-        pyautogui.press(key_name.lower())
-    except Exception as e:
-        print(f"[ERRO] Falha ao pressionar tecla {key_name}: {e}")
+from AutoKey import auto_key
 
 class MainApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Monitor Ragnarok")
-        self.root.geometry("950x700")
+        self.root.geometry("1100x900")
         self.root.resizable(False, False)
         self.root.configure(bg="#1e1e2f")
 
@@ -180,7 +173,7 @@ class MainApp:
                     continue
                 if buff_nome not in buffs_ativos:
                     self.log(f"[INFO] Buff {buff_nome} não está ativo. Ativando com tecla {tecla}")
-                    send_input_key(tecla)
+                    auto_key(tecla.upper())
         except Exception as e:
             self.log(f"[ERRO] verificação de buff: {e}")
 

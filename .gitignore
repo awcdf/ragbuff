@@ -193,3 +193,6 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 teste.py
+ahk/temp_press_key.ahk
+keybindings.json
+keybindings.json
