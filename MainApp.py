@@ -1,191 +1,150 @@
 import tkinter as tk
-from tkinter import ttk, Canvas, scrolledtext
-from PIL import ImageTk
-import time
+from tkinter import ttk
+import win32gui
+import win32process
+import psutil
 
+from MapViewer import MapViewer
 from MemoryReader import MemoryReader
 from PlayerStatus import PlayerStatus
-from BuffManager import BuffManager
 from MouseTracker import MouseTracker
-from MapViewer import MapViewer
+from BuffManager import BuffManager
 from KeyBinder import KeyBinder
-from AutoKey import auto_key
+
 
 class MainApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Monitor Ragnarok")
-        self.root.geometry("1100x900")
-        self.root.resizable(False, False)
-        self.root.configure(bg="#1e1e2f")
+        self.memory_reader = None
+        self.status = None
+        self.mouse_tracker = None
+        self.buff_manager = None
+        self.key_binder = KeyBinder()
+        self.map_viewer = MapViewer(self.root)
+        self.map_viewer.frame.grid(row=0, column=1, rowspan=5, padx=10, pady=10, sticky="nsew")
 
-        self.mem = MemoryReader()
-        self.status = PlayerStatus(self.mem)
-        self.buffs = BuffManager(self.mem)
-        self.mouse = MouseTracker()
-        self.scale = 1
-        self.rodando = False
-
-        self.current_map_name = self.status.get_map_name() or "unknown_map"
-        self.map_viewer = MapViewer(self.current_map_name)
+        self.found_windows = []  # Lista de (hwnd, title, pid)
+        self.ui_job = None
 
         self.build_ui()
-        self.load_map_image()
-        self.update_loop()
-        self.track_mouse()
-        self.update_map()
-        self.verificar_e_ativar_buffs()
+        self.update_window_list()
 
     def build_ui(self):
-        style = ttk.Style()
-        style.configure("TLabel", font=("Segoe UI", 11), background="#1e1e2f", foreground="white")
-        style.configure("TFrame", background="#1e1e2f")
-        style.configure("TLabelFrame", background="#1e1e2f", foreground="white", font=("Segoe UI", 11, "bold"))
+        self.root.title("RagBuff")
 
-        container = ttk.Frame(self.root, padding="10")
-        container.pack(fill="both", expand=True)
+        self.window_frame = ttk.LabelFrame(self.root, text="Selecionar Janela")
+        self.window_frame.grid(row=0, column=0, padx=10, pady=(10, 0), sticky="nsew")
 
-        self.main_frame = ttk.Frame(container)
-        self.main_frame.pack(side=tk.LEFT, fill="y")
+        self.window_label = ttk.Label(self.window_frame, text="Janela:")
+        self.window_label.pack(anchor="w", padx=5, pady=(5, 0))
 
-        stats_frame = ttk.LabelFrame(self.main_frame, text="Status")
-        stats_frame.pack(fill="x", padx=5, pady=5)
-        self.label_hp = ttk.Label(stats_frame, text="HP: ")
-        self.label_hp.pack(anchor="w")
-        self.label_sp = ttk.Label(stats_frame, text="SP: ")
-        self.label_sp.pack(anchor="w")
+        self.window_var = tk.StringVar()
+        self.window_combo = ttk.Combobox(self.window_frame, textvariable=self.window_var, state="readonly", width=30)
+        self.window_combo['values'] = []
+        self.window_combo.pack(anchor="w", padx=5, pady=(0, 5))
+        self.window_combo.bind("<<ComboboxSelected>>", self.on_window_selected)
 
-        pos_frame = ttk.LabelFrame(self.main_frame, text="Localização")
-        pos_frame.pack(fill="x", padx=5, pady=5)
-        self.label_xy = ttk.Label(pos_frame, text="Posição: ")
-        self.label_xy.pack(anchor="w")
-        self.label_mapa = ttk.Label(pos_frame, text="Mapa: ")
-        self.label_mapa.pack(anchor="w")
+        self.update_button = ttk.Button(self.window_frame, text="Atualizar", command=self.update_window_list)
+        self.update_button.pack(anchor="w", padx=5, pady=(0, 5))
 
-        buffs_frame = ttk.LabelFrame(self.main_frame, text="Buffs Ativos")
-        buffs_frame.pack(fill="x", padx=5, pady=5)
-        self.buffs_text = tk.StringVar()
-        self.label_buffs = ttk.Label(buffs_frame, textvariable=self.buffs_text, justify="left")
-        self.label_buffs.pack(fill="x")
+        self.status_frame = ttk.LabelFrame(self.root, text="STATUS")
+        self.status_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
+        self.hp_label = ttk.Label(self.status_frame, text="HP: --")
+        self.hp_label.pack(anchor="w", padx=5)
+        self.sp_label = ttk.Label(self.status_frame, text="SP: --")
+        self.sp_label.pack(anchor="w", padx=5)
 
-        mouse_frame = ttk.LabelFrame(self.main_frame, text="Cursor do Mouse")
-        mouse_frame.pack(fill="x", padx=5, pady=5)
-        self.label_mouse = ttk.Label(mouse_frame, text="CursorMouse x=0, y=0")
-        self.label_mouse.pack(anchor="w")
+        self.location_frame = ttk.LabelFrame(self.root, text="LOCALIZAÇÃO")
+        self.location_frame.grid(row=2, column=0, padx=10, pady=10, sticky="nsew")
+        self.map_label = ttk.Label(self.location_frame, text="Mapa: --")
+        self.map_label.pack(anchor="w", padx=5)
+        self.coords_label = ttk.Label(self.location_frame, text="Coordenadas: --")
+        self.coords_label.pack(anchor="w", padx=5)
 
-        self.keybinder = KeyBinder(self.main_frame)
-        self.keybinder.pack(fill="x", padx=5, pady=10)
+        self.buff_frame = ttk.LabelFrame(self.root, text="BUFFS ATIVOS")
+        self.buff_frame.grid(row=3, column=0, padx=10, pady=10, sticky="nsew")
+        self.buff_text = tk.Text(self.buff_frame, height=10, width=40)
+        self.buff_text.pack(padx=5, pady=5)
 
-        buttons_frame = ttk.Frame(self.main_frame)
-        buttons_frame.pack(fill="x", padx=5, pady=(0, 5))
+        self.cursor_frame = ttk.LabelFrame(self.root, text="CURSOR DO MOUSE")
+        self.cursor_frame.grid(row=4, column=0, padx=10, pady=10, sticky="nsew")
+        self.cursor_label = ttk.Label(self.cursor_frame, text="Posição do Mouse: --")
+        self.cursor_label.pack(anchor="w", padx=5)
 
-        self.btn_toggle = ttk.Button(buttons_frame, text="Start (Estado: Parado)", command=self.toggle_execucao)
-        self.btn_toggle.pack(side=tk.LEFT, padx=(0, 5))
+    def update_window_list(self):
+        windows = []
+        ragexe_pids = {proc.pid for proc in psutil.process_iter(['pid', 'name']) if proc.info['name'] and proc.info['name'].lower() == 'ragexe.exe'}
 
-        self.btn_ia_toggle = ttk.Button(buttons_frame, text="Ativar/Desativar IA", command=self.toggle_ia)
-        self.btn_ia_toggle.pack(side=tk.LEFT, padx=5)
+        def callback(hwnd, _):
+            if win32gui.IsWindowVisible(hwnd):
+                _, pid = win32process.GetWindowThreadProcessId(hwnd)
+                if pid in ragexe_pids:
+                    title = win32gui.GetWindowText(hwnd)
+                    windows.append((hwnd, title, pid))
 
-        self.log_text = scrolledtext.ScrolledText(self.main_frame, width=75, height=10,
-                                                  bg="#1e1e2f", fg="lime",
-                                                  font=("Consolas", 10), relief="sunken", bd=2)
-        self.log_text.pack(padx=0, pady=(0, 10), fill="x")
-        self.log("[INFO] Aplicação iniciada.")
+        win32gui.EnumWindows(callback, None)
+        self.found_windows = windows
+        self.window_combo['values'] = [f"{hwnd} - {title}" for hwnd, title, _ in windows]
+        if windows:
+            self.window_combo.current(0)
 
-        map_container = ttk.Frame(container)
-        map_container.pack(side=tk.RIGHT, fill="both", expand=True)
-
-        self.canvas = Canvas(map_container, width=300, height=300, bg="#2a2a3f", highlightbackground="#999")
-        self.canvas.pack(padx=5, pady=5)
-
-    def log(self, message):
-        timestamp = time.strftime("%H:%M:%S")
-        self.log_text.insert(tk.END, f"[{timestamp}] {message}\n")
-        self.log_text.see(tk.END)
-
-    def load_map_image(self):
-        map_img = self.map_viewer.get_image()
-        resized = map_img.resize((map_img.width * self.scale, map_img.height * self.scale), ImageTk.Image.NEAREST)
-        self.map_imgtk = ImageTk.PhotoImage(resized)
-        self.canvas.config(width=resized.width, height=resized.height)
-        self.canvas.delete("all")
-        self.canvas.create_image(0, 0, anchor=tk.NW, image=self.map_imgtk)
-        self.marker = self.canvas.create_oval(0, 0, 0, 0, fill='#ff4b4b', outline='black')
-
-    def update_loop(self):
-        try:
-            s = self.status.get_status()
-            if s:
-                self.label_hp.config(text=f"HP: {s['hp']} / {s['hp_total']}")
-                self.label_sp.config(text=f"SP: {s['sp']} / {s['sp_total']}")
-                self.label_xy.config(text=f"Posição: ({s['x']}, {s['y']})")
-                self.label_mapa.config(text=f"Mapa: {s['map']}")
-            else:
-                self.label_hp.config(text="HP: [erro]")
-                self.label_sp.config(text="SP: [erro]")
-                self.label_xy.config(text="Posição: [erro]")
-                self.label_mapa.config(text="Mapa: [erro]")
-
-            buffs = self.buffs.get_buffs()
-            self.buffs_text.set("\n".join(buffs) if buffs else "Nenhum buff ativo.")
-        except Exception as e:
-            self.log(f"[ERRO] update_loop: {e}")
-
-        self.root.after(1000, self.update_loop)
-
-    def track_mouse(self):
-        pos = self.mouse.get_cursor_position_relative()
-        if pos:
-            self.label_mouse.config(text=f"CursorMouse x={pos[0]}, y={pos[1]}")
-        else:
-            self.label_mouse.config(text="Mouse fora da janela do Ragnarok.")
-        self.root.after(500, self.track_mouse)
-
-    def update_map(self):
-        try:
-            pos = self.status.get_status()
-            new_map = self.status.get_map_name()
-            if new_map and new_map != self.current_map_name:
-                self.log(f"[INFO] Mudança de mapa detectada: {self.current_map_name} -> {new_map}")
-                self.current_map_name = new_map
-                self.map_viewer = MapViewer(new_map)
-                self.load_map_image()
-            if pos:
-                x = pos['x'] * self.scale
-                y = pos['y'] * self.scale
-                # Ajustar as coordenadas após a rotação de 180 graus
-                x_adjusted, y_adjusted = self.map_viewer.adjust_coordinates(x, y)
-                self.canvas.coords(self.marker, x_adjusted - 3, y_adjusted - 3, x_adjusted + 3, y_adjusted + 3)
-        except Exception as e:
-            self.log(f"[ERRO] update_map: {e}")
-        self.root.after(200, self.update_map)
-
-    def verificar_e_ativar_buffs(self):
-        if not self.rodando:
-            self.root.after(2000, self.verificar_e_ativar_buffs)
+    def on_window_selected(self, event):
+        selection = self.window_combo.get()
+        if not selection:
             return
 
+        hwnd_str = selection.split(" - ")[0]
         try:
-            buffs_ativos = self.buffs.get_buffs()
-            bindings = self.keybinder.get_key_bindings()
+            hwnd = int(hwnd_str)
+        except ValueError:
+            return
 
-            for tecla, buff_nome in bindings:
-                if not tecla or not buff_nome:
-                    continue
-                if buff_nome not in buffs_ativos:
-                    self.log(f"[INFO] Buff {buff_nome} não está ativo. Ativando com tecla {tecla}")
-                    auto_key(tecla.upper())
-        except Exception as e:
-            self.log(f"[ERRO] verificação de buff: {e}")
+        match = next(((h, t, p) for h, t, p in self.found_windows if h == hwnd), None)
+        if not match:
+            return
 
-        self.root.after(2000, self.verificar_e_ativar_buffs)
+        _, _, pid = match
+        self.memory_reader = MemoryReader(pid=pid)
+        self.status = PlayerStatus(self.memory_reader)
+        self.mouse_tracker = MouseTracker(self.memory_reader)
+        self.buff_manager = BuffManager(self.memory_reader)
 
-    def toggle_execucao(self):
-        self.rodando = not self.rodando
-        estado = "Rodando" if self.rodando else "Parado"
-        self.btn_toggle.config(text=f"{'Stop' if self.rodando else 'Start'} (Estado: {estado})")
+        if self.ui_job:
+            self.root.after_cancel(self.ui_job)
 
-    def toggle_ia(self):
-        self.log("[INFO] Botão Ativar/Desativar IA clicado - função futura")
+        self.update_ui()
+
+    def update_ui(self):
+        if self.status is None:
+            self.hp_label.config(text="HP: --")
+            self.sp_label.config(text="SP: --")
+            self.map_label.config(text="Mapa: --")
+            self.coords_label.config(text="Coordenadas: --")
+            self.cursor_label.config(text="Posição do Mouse: --")
+            self.buff_text.delete(1.0, tk.END)
+            self.ui_job = self.root.after(500, self.update_ui)
+            return
+
+        status_data = self.status.get_status()
+        if status_data:
+            self.hp_label.config(text=f"HP: {status_data['hp']} / {status_data['hp_total']}")
+            self.sp_label.config(text=f"SP: {status_data['sp']} / {status_data['sp_total']}")
+            self.map_label.config(text=f"Mapa: {status_data['map']}")
+            self.coords_label.config(text=f"Coordenadas: {status_data['x']}, {status_data['y']}")
+            self.map_viewer.update_map(status_data['map'], status_data['x'], status_data['y'])
+
+        pos = self.mouse_tracker.get_cursor_position_relative() if self.mouse_tracker else None
+        if pos:
+            self.cursor_label.config(text=f"Posição do Mouse: {pos[0]}, {pos[1]}")
+        else:
+            self.cursor_label.config(text="Posição do Mouse: Fora da janela")
+
+        buffs = self.buff_manager.get_buffs() if self.buff_manager else []
+        self.buff_text.delete(1.0, tk.END)
+        for buff in buffs:
+            self.buff_text.insert(tk.END, f"{buff}\n")
+
+        self.ui_job = self.root.after(500, self.update_ui)
 
 
 if __name__ == "__main__":

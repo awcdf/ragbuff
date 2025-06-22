@@ -3,12 +3,17 @@ import pymem.process
 import struct
 
 class MemoryReader:
-    def __init__(self, process_name="Ragexe.exe"):
+    def __init__(self, process_name="Ragexe.exe", pid=None):
         try:
-            self.pm = pymem.Pymem(process_name)
-            self.base = pymem.process.module_from_name(self.pm.process_handle, process_name).lpBaseOfDll
+            if pid is not None:
+                self.pm = pymem.Pymem(pid)
+                # Aqui tem que pegar base pelo módulo, usando PID
+                self.base = pymem.process.module_from_name(self.pm.process_handle, process_name).lpBaseOfDll
+            else:
+                self.pm = pymem.Pymem(process_name)
+                self.base = pymem.process.module_from_name(self.pm.process_handle, process_name).lpBaseOfDll
         except Exception as e:
-            print(f"[ERRO] Falha ao conectar ao processo '{process_name}': {e}")
+            print(f"[ERRO] Falha ao conectar ao processo '{process_name}' / PID '{pid}': {e}")
             raise SystemExit(1)
 
     def read_int(self, offset):

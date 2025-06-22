@@ -2,9 +2,10 @@ import win32gui
 import pyautogui
 
 class MouseTracker:
-    def __init__(self):
-        self.hwnd = None
-        self.window_info = None
+    def __init__(self, memory_reader):
+        self.memory_reader = memory_reader
+        self.mouse_x = 0
+        self.mouse_y = 0
 
     def get_window(self):
         def callback(hwnd, result):
@@ -32,3 +33,10 @@ class MouseTracker:
         if x_win <= x_mouse <= x_win + width and y_win <= y_mouse <= y_win + height:
             return (x_mouse - x_win, y_mouse - y_win)
         return None
+    
+    def update(self):
+        pos = self.get_cursor_position_relative()
+        if pos:
+            self.mouse_x, self.mouse_y = pos
+        else:
+            self.mouse_x, self.mouse_y = -1, -1 

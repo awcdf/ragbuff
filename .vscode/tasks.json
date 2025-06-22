@@ -1,0 +1,17 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Executar como Administrador",
+            "type": "shell",
+            "command": "powershell",
+            "args": [
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                "Start-Process python -Verb runAs -ArgumentList '${file}'"
+            ],
+            "problemMatcher": []
+        }
+    ]
+}
