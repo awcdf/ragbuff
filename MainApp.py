@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
 import win32gui
 import win32process
 import psutil
@@ -20,14 +20,16 @@ class MainApp:
         self.mouse_tracker = None
         self.buff_manager = None
         self.key_binder = KeyBinder()
+
         self.map_viewer = MapViewer(self.root)
         self.map_viewer.frame.grid(row=0, column=1, rowspan=5, padx=10, pady=10, sticky="nsew")
+        self.map_viewer.frame.configure(height=210)
 
-        self.found_windows = []  # Lista de (hwnd, title, pid)
+        self.found_windows = []  # Lista de (hwnd, title, pid, char_name)
         self.ui_job = None
 
         self.build_ui()
-        self.update_window_list()
+        self.root.after(100, self.update_window_list)
 
     def build_ui(self):
         self.root.title("RagBuff")
@@ -43,9 +45,6 @@ class MainApp:
         self.window_combo['values'] = []
         self.window_combo.pack(anchor="w", padx=5, pady=(0, 5))
         self.window_combo.bind("<<ComboboxSelected>>", self.on_window_selected)
-
-        self.update_button = ttk.Button(self.window_frame, text="Atualizar", command=self.update_window_list)
-        self.update_button.pack(anchor="w", padx=5, pady=(0, 5))
 
         self.status_frame = ttk.LabelFrame(self.root, text="STATUS")
         self.status_frame.grid(row=1, column=0, padx=10, pady=10, sticky="nsew")
@@ -72,8 +71,10 @@ class MainApp:
         self.cursor_label.pack(anchor="w", padx=5)
 
     def update_window_list(self):
+        print("[DEBUG] Atualizando lista de janelas...")
         windows = []
-        ragexe_pids = {proc.pid for proc in psutil.process_iter(['pid', 'name']) if proc.info['name'] and proc.info['name'].lower() == 'ragexe.exe'}
+        ragexe_pids = {proc.pid for proc in psutil.process_iter(['pid', 'name'])
+                       if proc.info['name'] and proc.info['name'].lower() == 'ragexe.exe'}
 
         def callback(hwnd, _):
             if win32gui.IsWindowVisible(hwnd):
@@ -81,32 +82,72 @@ class MainApp:
                 if pid in ragexe_pids:
                     title = win32gui.GetWindowText(hwnd)
                     windows.append((hwnd, title, pid))
+                    ragexe_pids.discard(pid)
 
         win32gui.EnumWindows(callback, None)
-        self.found_windows = windows
-        self.window_combo['values'] = [f"{hwnd} - {title}" for hwnd, title, _ in windows]
-        if windows:
+
+        found = []
+        combo_values = []
+
+        for hwnd, title, pid in windows:
+            char_name = "???"
+            try:
+                mem = MemoryReader(pid=pid)
+                tmp_status = PlayerStatus(mem)
+                char_name = tmp_status.get_name()
+            except Exception as e:
+                print(f"[DEBUG] Erro ao obter nome do personagem PID {pid}: {e}")
+
+            found.append((hwnd, title, pid, char_name))
+            combo_values.append(char_name)
+
+        self.found_windows = found
+        self.window_combo['values'] = combo_values
+
+        if combo_values:
             self.window_combo.current(0)
+            self.window_var.set(combo_values[0])
+            self.try_auto_connect_by_name(combo_values[0])
+        else:
+            self.window_combo.set("")
+            self.window_var.set("")
 
-    def on_window_selected(self, event):
-        selection = self.window_combo.get()
-        if not selection:
-            return
+        print("[DEBUG] ComboBox values:", combo_values)
 
-        hwnd_str = selection.split(" - ")[0]
-        try:
-            hwnd = int(hwnd_str)
-        except ValueError:
-            return
-
-        match = next(((h, t, p) for h, t, p in self.found_windows if h == hwnd), None)
+    def try_auto_connect_by_name(self, char_name):
+        match = next(((h, t, p, c) for h, t, p, c in self.found_windows if c == char_name), None)
         if not match:
             return
 
-        _, _, pid = match
+        hwnd, _, pid, _ = match
+        try:
+            self.memory_reader = MemoryReader(pid=pid)
+            self.status = PlayerStatus(self.memory_reader)
+            self.mouse_tracker = MouseTracker(self.memory_reader)
+            self.mouse_tracker.set_hwnd(hwnd)
+            self.buff_manager = BuffManager(self.memory_reader)
+            if self.ui_job:
+                self.root.after_cancel(self.ui_job)
+            self.update_ui()
+        except Exception as e:
+            messagebox.showerror("Erro ao conectar", f"Falha ao conectar ao processo 'Ragexe.exe':\n{str(e)}")
+            self.root.destroy()
+
+    def on_window_selected(self, event):
+        selected_name = self.window_combo.get()
+        if not selected_name:
+            return
+
+        match = next(((h, t, p, c) for h, t, p, c in self.found_windows if c == selected_name), None)
+        if not match:
+            return
+
+        hwnd, _, pid, _ = match
+
         self.memory_reader = MemoryReader(pid=pid)
         self.status = PlayerStatus(self.memory_reader)
         self.mouse_tracker = MouseTracker(self.memory_reader)
+        self.mouse_tracker.set_hwnd(hwnd)
         self.buff_manager = BuffManager(self.memory_reader)
 
         if self.ui_job:

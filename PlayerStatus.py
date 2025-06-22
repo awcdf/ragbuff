@@ -8,7 +8,8 @@ class PlayerStatus:
             'sp_total': 0x010A0768,
             'x': 0x01089444,
             'y': 0x01089448,
-            'map': 0x0109CC08
+            'map': 0x0109CC08,
+            'name': 0x010A2FF8
         }
 
     def get_status(self):
@@ -24,9 +25,18 @@ class PlayerStatus:
             }
         except:
             return None
+            raise
 
     def get_map_name(self):
         try:
             return self.mem.read_string(self.OFFSETS['map']).strip()
         except:
             return None
+            raise
+        
+    def get_name(self):
+        try:
+            return self.mem.read_string(self.OFFSETS['name']).strip()
+        except:
+            return "???"
+            raise
